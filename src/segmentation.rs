@@ -122,15 +122,33 @@ pub fn segment_edges(img: &[bool], height: usize, width: usize) -> Vec<(Segment,
                 let mut matched_edge = false;
                 for edge_idx in plausible_edges.iter() {
                     let this_segment = edge_segments[*edge_idx].unwrap();
-                    let candidate =
-                        Segment::new((this_segment.best_start_x, this_segment.start_y), (i, j));
-                    if edge_segments[*edge_idx]
-                        .unwrap()
-                        .update(candidate, &img, width)
-                    {
-                        matched_edge = true;
-                        needs_updating[*edge_idx] = false;
-                        updated_this_row.push(*edge_idx);
+                    if !this_segment.stage_zero {
+                        let candidate =
+                            Segment::new((this_segment.best_start_x, this_segment.start_y), (i, j));
+                        if edge_segments[*edge_idx]
+                            .unwrap()
+                            .update(candidate, &img, width)
+                        {
+                            matched_edge = true;
+                            needs_updating[*edge_idx] = false;
+                            updated_this_row.push(*edge_idx);
+                        }
+                    } else {
+                        let candidate1 =
+                            Segment::new((this_segment.min_start_x, this_segment.start_y), (i, j));
+                        let candidate2 =
+                            Segment::new((this_segment.max_start_x, this_segment.start_y), (i, j));
+                        if edge_segments[*edge_idx]
+                            .unwrap()
+                            .update(candidate1, &img, width)
+                            || edge_segments[*edge_idx]
+                                .unwrap()
+                                .update(candidate2, &img, width)
+                        {
+                            matched_edge = true;
+                            needs_updating[*edge_idx] = false;
+                            updated_this_row.push(*edge_idx);
+                        }
                     }
                 }
 
