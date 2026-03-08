@@ -11,7 +11,7 @@ impl Segment {
     }
 
     // assumes that end has greater y coordinate than start, so direction.1 is always positive
-    pub fn count_in_pixels(&self, cluster_ids: &[i8], targ_cluster: i8, width: usize) -> usize {
+    pub fn count_in_pixels(&self, img: &[bool], width: usize) -> usize {
         let mut n_pixels = 1;
 
         let (mut a, mut b) = (self.start.0 as f32, self.start.1 as f32);
@@ -27,7 +27,7 @@ impl Segment {
                 (ceila, b + step_y)
             };
 
-            if cluster_ids[a as usize + width * (b as usize)] == targ_cluster {
+            if img[a as usize + width * (b as usize)] {
                 n_pixels += 1;
             }
         }

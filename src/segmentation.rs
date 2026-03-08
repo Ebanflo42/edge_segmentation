@@ -1,134 +1,141 @@
 use crate::segment::*;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct TrackedSegment {
-    segment: Segment,
+    min_start_x: usize,
+    max_start_x: usize,
+    best_start_x: usize,
+    min_end_x: usize,
+    max_end_x: usize,
+    best_end_x: usize,
+    start_y: usize,
+    best_end_y: usize,
+    start_x: usize,
+    end_x: usize,
+    stage_zero: bool,
     score: usize,
 }
 
-pub fn segment_edges(img: &[bool], height: usize, width: usize) -> Vec<Segment> {
-    let mut cluster_ids = vec![-1i8; height * width];
-    let mut cluster_pixels = vec![Vec::<(usize, usize)>::new(); 16];
-    let mut cluster_segments = vec![Vec::<TrackedSegment>::with_capacity(8); 16];
-    let mut cluster_updated_this_row = [false; 16];
-    let mut least_unoccupied_cluster = 0usize;
-
-    for j in 1..(height - 1) {
-        for i in 0..16 {
-            cluster_updated_this_row[i] = false;
+impl TrackedSegment {
+    fn new(min_start_x: usize, max_start_x: usize, row: usize) -> Self {
+        TrackedSegment {
+            min_start_x,
+            max_start_x,
+            best_start_x: min_start_x,
+            min_end_x: min_start_x,
+            max_end_x: max_start_x,
+            best_end_x: max_start_x,
+            start_y: row,
+            best_end_y: row,
+            start_x: min_start_x,
+            end_x: max_start_x,
+            stage_zero: true,
+            score: 0,
         }
+    }
 
-        for i in 1..(width - 1) {
-            if img[i + width * j] {
-                let mut found_clusters_at = Vec::<(i8, usize, usize)>::with_capacity(8);
+    fn update(&mut self, candidate: Segment, img: &[bool], width: usize) -> bool {
+        let new_score = candidate.count_in_pixels(img, width);
+        if new_score > self.score {
+            self.score = new_score;
+            self.best_end_x = candidate.end.0;
+            self.best_end_y = candidate.end.1;
+            if candidate.end.0 < self.min_end_x {
+                self.min_end_x = candidate.end.0;
+            }
+            if candidate.end.0 > self.max_end_x {
+                self.max_end_x = candidate.end.0;
+            }
+            true
+        } else {
+            false
+        }
+    }
 
-                for di in -1..2 {
-                    for dj in -1..2 {
-                        if di != 0 || dj != 0 {
-                            let neighbor_x = ((i as i64) + di) as usize;
-                            let neighbor_y = ((j as i64) + dj) as usize;
-                            let cluster_id = cluster_ids[neighbor_x + width * neighbor_y];
-                            if cluster_id > -1 {
-                                found_clusters_at.push((cluster_id, neighbor_x, neighbor_y));
-                            }
-                        }
-                    }
-                }
-
-                if found_clusters_at.len() == 0 {
-                    // need a case for cluster ID being greater than max allowable!
-                    cluster_ids[i + width * j] = least_unoccupied_cluster as i8;
-                    cluster_pixels[least_unoccupied_cluster].push((i, j));
-                    least_unoccupied_cluster += 1;
-                    // still need another case for cluster merging!!!
+    fn extrapolate_likely_interval(&mut self, row: usize, width: usize) -> (usize, usize) {
+        // in this case, the edge was only scanned for one row so far, so we extrapolate a wide interval
+        if self.stage_zero {
+            self.stage_zero = false;
+            (
+                if self.max_start_x > 2 * self.min_start_x {
+                    0
                 } else {
-                    let (cluster_id, x, y) = found_clusters_at[0];
-                    cluster_ids[i + width * j] = cluster_id;
-                    cluster_pixels[cluster_id as usize].push((i, j));
-                    cluster_updated_this_row[cluster_id as usize] = true;
+                    2 * self.min_start_x - self.max_start_x
+                },
+                if 2 * self.max_start_x > width + self.max_start_x {
+                    width
+                } else {
+                    2 * self.max_start_x - self.min_start_x
+                },
+            )
+        } else {
+            let dy = (row - self.start_y) as f32;
+            let dx_dy1 = ((self.max_start_x - self.min_start_x) as f32) / dy;
+            let dx_dy2 = ((self.max_end_x - self.min_start_x) as f32) / dy;
+            (
+                usize::max(
+                    0,
+                    self.min_start_x + (f32::floor(f32::min(dx_dy1, dx_dy2)) as usize),
+                ),
+                usize::min(
+                    width,
+                    self.max_end_x + (f32::ceil(f32::max(dx_dy1, dx_dy2)) as usize),
+                ),
+            )
+        }
+    }
+}
 
-                    if cluster_segments[cluster_id as usize].len() == 0 {
-                        let segment = Segment::new((x, y), (i, j));
-                        cluster_segments[cluster_id as usize].push(TrackedSegment {
-                            segment,
-                            score: 2,
-                        })
-                    } else {
-                        let mut min_start_dist = usize::max(height, width) as i64;
-                        let mut best_start_ix = 0usize;
-                        let mut min_end_dist = usize::max(height, width) as i64;
-                        let mut best_end_ix = 0usize;
+pub fn segment_edges(img: &[bool], height: usize, width: usize) -> Vec<Segment> {
+    let mut edge_segments = Vec::<TrackedSegment>::with_capacity(128);
+    let mut extrapolated_intervals = Vec::<(usize, usize, usize)>::with_capacity(128);
+    let mut needs_updating = Vec::<usize>::with_capacity(128);
+    let mut updated_this_row = Vec::<usize>::with_capacity(128);
 
-                        for (ix, seg) in cluster_segments[cluster_id as usize].iter().enumerate() {
-                            let next_start_dist = i64::max(
-                                i64::abs((seg.segment.start.0 as i64) - (i as i64)),
-                                i64::abs(seg.segment.start.1 as i64) - (j as i64),
-                            );
-                            if next_start_dist < min_start_dist {
-                                min_start_dist = next_start_dist;
-                                best_start_ix = ix;
-                            }
+    for j in 0..height {
+        updated_this_row.clear();
+        let mut new_edge_id = -1i8;
+        let mut new_edge_start = 0usize;
 
-                            let next_end_dist = i64::max(
-                                i64::abs((seg.segment.end.0 as i64) - (i as i64)),
-                                i64::abs(seg.segment.end.1 as i64) - (j as i64),
-                            );
-                            if next_end_dist < min_end_dist {
-                                min_end_dist = next_end_dist;
-                                best_end_ix = ix;
-                            }
-                        }
+        for i in 0..width {
+            if img[i + width * j] {
+                let plausible_edges: Vec<usize> = extrapolated_intervals
+                    .iter()
+                    .filter(|(_, i1, i2)| *i1 <= i || i <= *i2)
+                    .map(|x| x.0)
+                    .collect();
 
-                        let best_end_segment = &cluster_segments[cluster_id as usize][best_end_ix];
-                        let candidate = Segment::new(best_end_segment.segment.start, (i, j));
-                        let new_score = candidate.count_in_pixels(&cluster_ids, cluster_id, width);
-                        if new_score > best_end_segment.score {
-                            cluster_segments[cluster_id as usize][best_end_ix] = TrackedSegment {
-                                segment: candidate,
-                                score: new_score,
-                            }
-                        } else {
-                            let best_start_segment =
-                                &cluster_segments[cluster_id as usize][best_start_ix];
-                            let new_segment =
-                                Segment::new(best_start_segment.segment.start, (i, j));
-                            let score =
-                                new_segment.count_in_pixels(&cluster_ids, cluster_id, width);
-                            cluster_segments[cluster_id as usize].push(TrackedSegment {
-                                segment: new_segment,
-                                score,
-                            })
-                        }
+                let mut matched_edge = false;
+                for edge_idx in plausible_edges.iter() {
+                    let this_segment = edge_segments[*edge_idx];
+                    let candidate =
+                        Segment::new((this_segment.best_start_x, this_segment.start_y), (i, j));
+                    if edge_segments[*edge_idx].update(candidate, &img, width) {
+                        matched_edge = true;
+                        needs_updating
+                            .remove(*needs_updating.iter().find(|x| *x == edge_idx).unwrap());
+                        updated_this_row.push(*edge_idx);
                     }
                 }
-            }
-        }
 
-        // erase clusters with less than 16 pixels that havent been updated
-        for cluster_id in (0..16).rev() {
-            if !cluster_updated_this_row[cluster_id]
-                && cluster_pixels[cluster_id].len() > 0
-                && cluster_pixels.len() < 16
-            {
-                for p in cluster_pixels[cluster_id].iter() {
-                    cluster_ids[p.0 + width * p.1] = -1;
+                if !matched_edge && new_edge_id == -1 {
+                    new_edge_id = edge_segments.len() as i8;
+                    new_edge_start = i;
                 }
-                cluster_pixels[cluster_id].clear();
-                cluster_segments[cluster_id].clear();
-                least_unoccupied_cluster = cluster_id;
+            } else if new_edge_id > -1 {
+                let new_edge = TrackedSegment::new(new_edge_start, i, j);
+                updated_this_row.push(edge_segments.len());
+                edge_segments.push(new_edge);
             }
         }
+
+        edge_segments = edge_segments
+            .iter()
+            .enumerate()
+            .filter(|(ix, edge)| !needs_updating.iter().any(|e| e == ix) || edge.score > 8)
+            .map(|x| *x.1)
+            .collect();
     }
 
-    let n_segments = cluster_segments.iter().map(|segs| segs.len()).sum();
-    let mut result = Vec::<Segment>::with_capacity(n_segments);
-    for segs in cluster_segments.into_iter() {
-        for seg in segs.iter() {
-            if seg.score > 4 {
-                result.push(seg.segment);
-            }
-        }
-    }
-
-    result
+    vec![]
 }
