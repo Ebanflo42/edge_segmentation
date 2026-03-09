@@ -3,7 +3,7 @@ pub mod segmentation;
 
 #[cfg(test)]
 mod tests {
-    use crate::segment::*;
+    use crate::{segment::*, segmentation::segment_edges};
 
     #[test]
     fn counting_test1() {
@@ -62,4 +62,59 @@ mod tests {
         assert_eq!(count1, 5);
     }
 
+    #[test]
+    fn segment_test1() {
+        let img = [false, false, false, false, false, false, false, false,
+                               false, true, true, true, true, true, true, false,
+                               false, true, false, false, false, false, true, false,
+                               false, true, false, false, false, false, true, false,
+                               false, true, false, false, false, false, true, false,
+                               false, true, true, false, false, false, true, false,
+                               false, true, true, true, true, true, true, false,
+                               false, false, false, false, false, false, false, false];
+        let segments = segment_edges(&img, 8, 8);
+        //println!("{:?}", segments);
+        println!("{:?}", segments);
+    }
+
+    /*
+    #[test]
+    fn segment_test2() {
+        let img = [false, true, false, false, false, false,
+                               false, false, true, false, false, false,
+                               true, true, true, true, true, true,
+                               false, false, false, false, true, false,
+                               false, false, false, false, false, true,
+                               false, false, false, false, false, false];
+        let segments = segment_edges(&img, 6, 6);
+        //println!("{:?}", segments);
+        println!("{}", segments.len());
+    }
+
+    #[test]
+    fn segment_test3() {
+        let img = [false, true, false, false, false, true,
+                               false, true, false, false, true, false,
+                               false, true, false, true, false, false,
+                               false, true, true, false, true, false,
+                               false, true, false, false, false, false,
+                               true, true, false, false, false, false];
+        let segments = segment_edges(&img, 6, 6);
+        //println!("{:?}", segments);
+        println!("{}", segments.len());
+    }
+
+    #[test]
+    fn segment_test4() {
+        let img = [false, false, true, false, false, false,
+                               false, true, false, true, false, false,
+                               true, false, false, false, true, false,
+                               false, true, true, false, false, true,
+                               false, true, true, true, true, false,
+                               false, false, false, false, false, false];
+        let segments = segment_edges(&img, 6, 6);
+        //println!("{:?}", segments);
+        println!("{}", segments.len());
+    }
+    */
 }
