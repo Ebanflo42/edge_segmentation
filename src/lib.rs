@@ -64,15 +64,15 @@ mod tests {
 
     #[test]
     fn segment_test1() {
-        let img = [false, false, false, false, false, false, false, false,
-                               false, true, true, true, true, true, true, false,
-                               false, true, false, false, false, false, true, false,
-                               false, true, false, false, false, false, true, false,
-                               false, true, false, false, false, false, true, false,
-                               false, true, true, false, false, false, true, false,
-                               false, true, true, true, true, true, true, false,
-                               false, false, false, false, false, false, false, false];
-        let segments = segment_edges(&img, 8, 8);
+        let img = [false, false, false, false, false, false, false, false, false, false,
+                               false, true, true, true, true, true, true, true, true, false,
+                               false, true, false, false, false, false, false, false, true, false,
+                               false, true, false, false, false, false, false, false, true, false,
+                               false, true, false, false, false, false, false, false, true, false,
+                               false, true, true, false, false, false, false, false, true, false,
+                               false, true, true, true, true, true, true, true, true, false,
+                               false, false, false, false, false, false, false, false, false, false];
+        let segments = segment_edges(&img, 8, 10, 1);
         //println!("{:?}", segments);
         println!("{:?}", segments);
     }

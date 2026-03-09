@@ -39,7 +39,7 @@ impl TrackedSegment {
     }
 
     fn new(min_start_x: usize, max_start_x: usize, row: usize) -> Self {
-        println!("new segment: {} {} {}", min_start_x, max_start_x, row);
+        //println!("new segment: {} {} {}", min_start_x, max_start_x, row);
         TrackedSegment {
             initialized: true,
             min_start_x,
@@ -61,12 +61,14 @@ impl TrackedSegment {
         self.stage_zero = false;
 
         let new_score = candidate.count_in_pixels(img, width);
+        /*
         println!(
             "candidate, score, old_score: {:?} {} {}",
             candidate, new_score, self.score
         );
+        */
         if new_score > self.score {
-            println!("updating!");
+            //println!("updating!");
             self.score = new_score;
             self.best_end_x = candidate.end.0;
             self.best_end_y = candidate.end.1;
@@ -105,13 +107,13 @@ impl TrackedSegment {
             let dx_dy1 = ((self.max_start_x - self.min_start_x) as f32) / dy;
             let dx_dy2 = ((self.max_end_x - self.min_start_x) as f32) / dy;
             (
-                usize::max(
-                    0,
-                    self.min_start_x + (f32::floor(f32::min(dx_dy1, dx_dy2)) as usize),
-                ),
+                f32::max(
+                    0.0,
+                    (self.min_start_x as f32) + f32::floor(f32::min(dx_dy1, dx_dy2)) - 1.0,
+                ) as usize,
                 usize::min(
                     width,
-                    self.max_end_x + (f32::ceil(f32::max(dx_dy1, dx_dy2)) as usize),
+                    self.max_start_x + (f32::ceil(f32::max(dx_dy1, dx_dy2)) as usize + 1),
                 ),
             )
         }
@@ -128,7 +130,12 @@ impl TrackedSegment {
     }
 }
 
-pub fn segment_edges(img: &[bool], height: usize, width: usize) -> Vec<(Segment, usize)> {
+pub fn segment_edges(
+    img: &[bool],
+    height: usize,
+    width: usize,
+    min_pixels_per_edge: usize,
+) -> Vec<(Segment, usize)> {
     let mut edge_segments = [TrackedSegment::default(); 128];
     let mut extrapolated_intervals = Vec::with_capacity(128);
     let mut needs_updating = [false; 128];
@@ -136,13 +143,14 @@ pub fn segment_edges(img: &[bool], height: usize, width: usize) -> Vec<(Segment,
     let mut least_unoccupied_index = 0;
 
     for j in 0..(height - 1) {
-        println!("row: {}", j);
+        //println!("row: {}", j);
         let mut new_edge_id = -1i8;
         let mut new_edge_start = 0usize;
         for id in 0..128 {
             updated_this_row[id] = false;
         }
-        println!("{:?}", extrapolated_intervals);
+        //println!("{:?}", extrapolated_intervals);
+        /*
         println!(
             "{:?}",
             edge_segments
@@ -152,42 +160,50 @@ pub fn segment_edges(img: &[bool], height: usize, width: usize) -> Vec<(Segment,
                 .map(|x| x.best_segment())
                 .collect::<Vec<(Segment, usize)>>()
         );
+        */
 
         for i in 0..(width - 1) {
             if img[i + width * j] {
-                let plausible_edges: Vec<usize> = extrapolated_intervals
+                let plausible_edges: Vec<(usize, usize, usize)> = extrapolated_intervals
                     .iter()
-                    .filter(|(_, i1, i2)| *i1 <= i || i <= *i2)
-                    .map(|x| x.0)
+                    .filter(|(_, i1, i2)| *i1 <= i && i <= *i2)
+                    .map(|x| *x)
                     .collect();
 
-                let mut matched_edge = false;
-                for edge_idx in plausible_edges.iter() {
-                    let this_segment = edge_segments[*edge_idx];
-                    if !this_segment.stage_zero {
-                        let candidate =
-                            Segment::new((this_segment.best_start_x, this_segment.start_y), (i, j));
-                        if edge_segments[*edge_idx].update(candidate, &img, width) {
-                            matched_edge = true;
-                            needs_updating[*edge_idx] = false;
-                            updated_this_row[*edge_idx] = true;
-                        }
-                    } else {
-                        let candidate1 =
-                            Segment::new((this_segment.min_start_x, this_segment.start_y), (i, j));
-                        let candidate2 =
-                            Segment::new((this_segment.max_start_x, this_segment.start_y), (i, j));
-                        if edge_segments[*edge_idx].update(candidate1, &img, width)
-                            || edge_segments[*edge_idx].update(candidate2, &img, width)
-                        {
-                            matched_edge = true;
-                            needs_updating[*edge_idx] = false;
-                            updated_this_row[*edge_idx] = true;
+                if plausible_edges.len() > 0 {
+                    //println!("candidate pixel: {} {}", i, j);
+                    for &interval in plausible_edges.iter() {
+                        //println!("{} {}", interval.1, interval.2);
+                        let this_segment = edge_segments[interval.0];
+                        if !this_segment.stage_zero {
+                            let candidate = Segment::new(
+                                (this_segment.best_start_x, this_segment.start_y),
+                                (i, j),
+                            );
+                            if edge_segments[interval.1].update(candidate, &img, width) {
+                                //matched_edge = true;
+                                needs_updating[interval.0] = false;
+                                updated_this_row[interval.0] = true;
+                            }
+                        } else {
+                            let candidate1 = Segment::new(
+                                (this_segment.min_start_x, this_segment.start_y),
+                                (i, j),
+                            );
+                            let candidate2 = Segment::new(
+                                (this_segment.max_start_x, this_segment.start_y),
+                                (i, j),
+                            );
+                            if edge_segments[interval.0].update(candidate1, &img, width)
+                                || edge_segments[interval.0].update(candidate2, &img, width)
+                            {
+                                //matched_edge = true;
+                                needs_updating[interval.0] = false;
+                                updated_this_row[interval.0] = true;
+                            }
                         }
                     }
-                }
-
-                if !matched_edge && new_edge_id == -1 {
+                } else if new_edge_id == -1 {
                     new_edge_id = least_unoccupied_index as i8;
                     new_edge_start = i;
                 }
@@ -217,7 +233,7 @@ pub fn segment_edges(img: &[bool], height: usize, width: usize) -> Vec<(Segment,
         // remove edges covering less than 8 pixels which were not updated this row
         for id in (0..128).rev() {
             if edge_segments[id].initialized {
-                if needs_updating[id] && edge_segments[id].score < 4 {
+                if needs_updating[id] && edge_segments[id].score < min_pixels_per_edge {
                     edge_segments[id].initialized = false;
                     least_unoccupied_index = id;
                 }
