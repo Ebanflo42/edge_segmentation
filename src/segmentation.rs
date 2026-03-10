@@ -316,7 +316,7 @@ pub fn segment_edges_lite(
                             );
                             if edge_segments[k].update(candidate, &img, width) {
                                 //matched_edge = true;
-                                needs_updating[k] = false;
+                                //needs_updating[k] = false;
                                 updated_this_row[k] = true;
                                 matched_pixel = true;
                             }
@@ -333,7 +333,7 @@ pub fn segment_edges_lite(
                                 || edge_segments[k].update(candidate2, &img, width)
                             {
                                 //matched_edge = true;
-                                needs_updating[k] = false;
+                                //needs_updating[k] = false;
                                 updated_this_row[k] = true;
                                 matched_pixel = true;
                             }
@@ -374,7 +374,7 @@ pub fn segment_edges_lite(
         // remove edges covering less than 8 pixels which were not updated this row
         for id in (0..1024).rev() {
             if edge_segments[id].initialized {
-                if needs_updating[id] && edge_segments[id].score < min_pixels_per_edge {
+                if !updated_this_row[id] && edge_segments[id].score < min_pixels_per_edge {
                     edge_segments[id].initialized = false;
                     least_unoccupied_index = id;
                 }
