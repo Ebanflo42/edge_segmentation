@@ -60,7 +60,7 @@ fn draw_segments(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let img = ImageReader::open("funhouse.jpg")?.decode()?;
     let sobel = extract_sobel(&img);
-    let edges = segment_edges_lite(&sobel, img.height() as usize, img.width() as usize, 32);
+    let edges = segment_edges(&sobel, img.height() as usize, img.width() as usize, 32);
     println!("{}", edges.len());
     //println!("{:?}", edges);
 
