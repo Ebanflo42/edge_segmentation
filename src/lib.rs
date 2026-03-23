@@ -1,5 +1,7 @@
+//#![feature(explicit_tail_calls)]
 pub mod segment;
 pub mod segmentation;
+pub mod quadtree_idea;
 
 #[cfg(test)]
 mod tests {
@@ -65,6 +67,21 @@ mod tests {
     #[test]
     fn segment_test1() {
         let img = [false, false, false, false, false, false, false, false, false, false,
+                               false, true, true, true, true, true, true, true, true, false,
+                               false, true, false, false, false, false, false, false, true, false,
+                               false, true, false, false, false, false, false, false, true, false,
+                               false, true, false, false, false, false, false, false, true, false,
+                               false, true, true, false, false, false, false, false, true, false,
+                               false, true, true, true, true, true, true, true, true, false,
+                               false, false, false, false, false, false, false, false, false, false];
+        let segments = segment_edges(&img, 8, 10, 1);
+        //println!("{:?}", segments);
+        println!("{:?}", segments);
+    }
+
+    #[test]
+    fn segment_test2() {
+        let img = [false, true, false, false, false, false, false, false, false, false,
                                false, true, true, true, true, true, true, true, true, false,
                                false, true, false, false, false, false, false, false, true, false,
                                false, true, false, false, false, false, false, false, true, false,

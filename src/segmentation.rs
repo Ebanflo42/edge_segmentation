@@ -100,6 +100,20 @@ impl TrackedSegment {
     }
 
     fn extrapolate_likely_interval(&mut self, row: usize, width: usize) {
+        let mi = self.min_start_x as i64;
+        let ma = self.max_start_x as i64;
+        let dif = ma - mi;
+        self.interval_start = if self.best_end_x < self.best_start_x {
+            i64::max(0, self.best_end_x as i64 - dif - 1) as usize
+        } else {
+            i64::max(0, self.best_end_x as i64 - 1) as usize
+        };
+        self.interval_end = if self.best_end_x > self.best_start_x {
+            usize::min(width, self.best_end_x + dif as usize + 1)
+        } else {
+            usize::min(width, self.best_end_x + 1)
+        };
+        /*
         let dy = (row - self.start_y) as f32;
         if row == self.start_y {
             println!("{:?}", self);
@@ -115,6 +129,7 @@ impl TrackedSegment {
             self.interval_end + (f32::ceil(f32::max(dx_dy1, dx_dy2)) as usize + 1),
         );
         println!("{} {}", self.interval_start, self.interval_end);
+        */
     }
 
     fn best_segment(&self) -> (Segment, usize) {
@@ -145,16 +160,17 @@ pub fn segment_edges(
         for id in 0..1024 {
             updated_this_row[id] = false;
         }
-        /*
+        //*
         println!(
             "{:?}",
             edge_segments
                 .iter()
                 .filter(|x| x.initialized)
                 .map(|x| *x)
-                .collect::<Vec<TrackedSegment>>().len()
+                .collect::<Vec<TrackedSegment>>()
+                .len()
         );
-        */
+        //*/
 
         for i in 0..(width - 1) {
             if img[i + width * j] {
@@ -201,7 +217,7 @@ pub fn segment_edges(
                 }
             } else if new_edge_id > -1 {
                 let new_edge = TrackedSegment::new(new_edge_start, i, j, width);
-                updated_this_row[new_edge_id as usize] = true;
+                updated_this_row[new_edge_id as usize] = false;
                 edge_segments[new_edge_id as usize] = new_edge;
 
                 while edge_segments[least_unoccupied_index].initialized
@@ -236,7 +252,7 @@ pub fn segment_edges(
                         edge_segments[id].needs_updating = false;
                     }
                 } else if !edge_segments[id].stage_zero {
-                    edge_segments[id].extrapolate_likely_interval(j, width);
+                    edge_segments[id].extrapolate_likely_interval(j + 1, width);
                 }
             }
         }
