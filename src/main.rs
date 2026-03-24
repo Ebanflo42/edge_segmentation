@@ -6,8 +6,8 @@ use edge_segmentation::{quadtree_idea::*, segment::*, segmentation::*};
 use image::{DynamicImage, GenericImageView, ImageBuffer, ImageReader, Pixel, Rgb, RgbImage};
 //use plotters::prelude::*;
 
-const OUT_FILE_NAME: &str = "edges3.png";
-const IN_FILE_NAME: &str = "revolution.jpg";
+const OUT_FILE_NAME: &str = "welcome_test.png";
+const IN_FILE_NAME: &str = "welcome.jpg";
 const THRESHOLD: f32 = 0.15;
 const QUANTILE: f32 = 0.95;
 

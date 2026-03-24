@@ -1,5 +1,6 @@
 #![feature(explicit_tail_calls)]
 use crate::segment::Segment;
+use std::collections::BTreeSet;
 //#[macro_use] extern crate tramp;
 //use tramp::{tramp, Rec, rec_call, rec_ret};
 
@@ -180,6 +181,62 @@ fn extract_start_and_end(
     (cluster[start_ix], cluster[end_ix])
 }
 
+fn unify_quadtree_segments(preliminary: Vec<Option<Segment>>) -> Vec<Segment> {
+    let mut result = Vec::new();
+    // fix this bs
+    let mut depth = 0;
+    while usize::pow(4, depth) != preliminary.len() {
+        depth += 1;
+    }
+    for i in 0..preliminary.len() {
+        match preliminary[i] {
+            None => continue,
+            Some(s) => {
+                let dirnorm =
+                    f32::sqrt(s.direction.0 * s.direction.0 + s.direction.1 * s.direction.1);
+                let dir = (s.direction.0 / dirnorm, s.direction.1 / dirnorm);
+                let this_quad = i % 4;
+                let opposite_quad = (this_quad + 2)%4;
+                let mut parent = i / 4;
+                let mut search_depth = 1;
+                while search_depth < depth && parent != opposite_quad {
+                    parent /= 4;
+                    search_depth += 1;
+                }
+                // the case where we have a cell all the way at the corner of the image
+                if search_depth == depth {
+                    parent = i / 4;
+                    search_depth = 1;
+                }
+                let n_iters = usize::pow(4, search_depth);
+                for j in n_iters * parent..n_iters * (parent + 1) {
+                    match preliminary[j] {
+                        None => continue,
+                        Some(s1) => {
+                            if u32::max(
+                                s.start.0 as u32 - s1.start.0 as u32,
+                                s1.start.1 as u32 - s1.start.1 as u32,
+                            ) < 3
+                            {
+                                let dirnorm1 = f32::sqrt(
+                                    s1.direction.0 * s1.direction.0
+                                        + s1.direction.1 * s1.direction.1,
+                                );
+                                let dir1 = (s1.direction.0 / dirnorm1, s1.direction.1 / dirnorm1);
+                                // about 5 degrees
+                                if dir.0*dir1.0 + dir.1*dir1.1 < 1e-3 {
+
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    result.into_iter().collect()
+}
+
 pub fn detect_edges(clusters: &Vec<Vec<(f32, f32)>>) -> Vec<Segment> {
     let mut result = Vec::with_capacity(clusters.len());
     for cluster in clusters.iter() {
@@ -197,19 +254,21 @@ pub fn detect_edges(clusters: &Vec<Vec<(f32, f32)>>) -> Vec<Segment> {
                 let small_eigvec = solve_kernel(cov.0 - small_eig, cov.1);
                 let (mut start, mut end) = extract_start_and_end(cluster, small_eigvec, big_eigvec);
                 if f32::abs(start.0 - end.0) < 2.0 && f32::abs(start.1 - end.1) < 2.0 {
-                    continue;
+                    result.push(None);
                 }
                 (start, end) = if start.1 < end.1 {
                     (start, end)
                 } else {
                     (end, start)
                 };
-                result.push(Segment::new(
+                result.push(Some(Segment::new(
                     (start.0 as usize, start.1 as usize),
                     (end.0 as usize, end.1 as usize),
-                ));
+                )));
             }
+        } else {
+            result.push(None)
         }
     }
-    result
+    unify_quadtree_segments(result)
 }
