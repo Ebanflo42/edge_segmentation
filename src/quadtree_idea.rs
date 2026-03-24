@@ -4,7 +4,7 @@ use crate::segment::Segment;
 //use tramp::{tramp, Rec, rec_call, rec_ret};
 
 //*
-fn pick_pivot(xs: &Vec<f32>) -> f32 {
+fn median_lte5(xs: &Vec<f32>) -> f32 {
     if xs.len() == 1 {
         xs[0]
     } else if xs.len() == 2 {
@@ -19,46 +19,73 @@ fn pick_pivot(xs: &Vec<f32>) -> f32 {
         xs.clone().sort_by(|a, b| a.total_cmp(b));
         xs[2]
     } else {
-        let chunk_medians = xs
-            .chunks(5)
-            .filter(|ys| ys.len() == 5)
-            .map(|ys| {
-                let mut ysc = ys.to_vec();
-                ysc.sort_by(|a, b| a.total_cmp(b));
-                ysc[2]
-            })
-            .collect::<Vec<f32>>();
-        linear_time_median(&chunk_medians)
+        panic!("Unintended usage of `median_lte5`!");
     }
 }
 
-fn quickselect(xs: &Vec<f32>, ix: usize) -> f32 {
-    let pivot = pick_pivot(xs);
-    let mut lessthan = Vec::with_capacity(xs.len());
-    let mut greaterthan = Vec::with_capacity(xs.len());
-    for x in xs.iter() {
-        if *x < pivot {
-            lessthan.push(*x);
-        } else {
-            greaterthan.push(*x);
+pub fn quickselect(mut candidate_elems: Vec<f32>, mut i: usize) -> f32 {
+    while candidate_elems.len() > 5 {
+        //println!("{}", candidate_elems.len());
+        let mut candidate_pivots = candidate_elems.clone();
+        while candidate_pivots.len() > 5 {
+            candidate_pivots = candidate_pivots
+                .chunks(5)
+                .filter(|xs| xs.len() == 5)
+                .map(|xs| {
+                    let mut ys = xs.to_vec();
+                    ys.sort_by(|a, b| a.total_cmp(b));
+                    ys[2]
+                })
+                .collect();
         }
+        let pivot = median_lte5(&candidate_pivots);
+        //println!("{:?}, {}", candidate_elems, pivot);
+
+        let mut lessthan = Vec::with_capacity(candidate_elems.len());
+        let mut eq_count = 0usize;
+        let mut greaterthan = Vec::with_capacity(candidate_elems.len());
+
+        for x in candidate_elems.iter() {
+            if *x < pivot {
+                lessthan.push(*x);
+            } else if *x == pivot {
+                eq_count += 1;
+            } else {
+                greaterthan.push(*x);
+            }
+        }
+        if i < lessthan.len() {
+            //println!("LESS THAN {} {}", i, lessthan.len());
+            candidate_elems = lessthan;
+        } else if i < eq_count + lessthan.len() {
+            //println!("EQUALS {} {}", i, pivot);
+            return pivot;
+        } else {
+            //println!("GREATER THAN {} {}", i, greaterthan.len());
+            candidate_elems = greaterthan;
+            i -= eq_count + lessthan.len();
+        }
+        //panic!("");
     }
-    if ix < lessthan.len() {
-        quickselect(&lessthan, ix)
-    } else if ix == lessthan.len() {
-        pivot
+    candidate_elems[i]
+}
+
+fn linear_time_median(xs: Vec<f32>) -> f32 {
+    let l = xs.len();
+    if xs.len() % 2 == 1 {
+        quickselect(xs, l / 2)
     } else {
-        quickselect(&greaterthan, ix - lessthan.len())
+        0.5 * (quickselect(xs.clone(), l / 2) + quickselect(xs, l / 2 - 1))
     }
 }
 
-fn linear_time_median(xs: &Vec<f32>) -> f32 {
-    if xs.len()%2 == 1 {
-        quickselect(xs, xs.len()/2)
-    } else {
-        0.5*(quickselect(xs,xs.len()/2) + quickselect(xs, xs.len()/2 - 1))
-    }
+fn medioid(points: &Vec<(f32, f32)>) -> (f32, f32) {
+    (
+        linear_time_median(points.iter().map(|x| x.0).collect::<Vec<f32>>()),
+        linear_time_median(points.iter().map(|x| x.1).collect::<Vec<f32>>()),
+    )
 }
+
 //*/
 fn centroid(points: &Vec<(f32, f32)>) -> (f32, f32) {
     (
@@ -169,6 +196,9 @@ pub fn detect_edges(clusters: &Vec<Vec<(f32, f32)>>) -> Vec<Segment> {
                 let big_eigvec = solve_kernel(cov.0 - big_eig, cov.1);
                 let small_eigvec = solve_kernel(cov.0 - small_eig, cov.1);
                 let (mut start, mut end) = extract_start_and_end(cluster, small_eigvec, big_eigvec);
+                if f32::abs(start.0 - end.0) < 2.0 || f32::abs(start.1 - end.1) < 2.0 {
+                    continue;
+                }
                 (start, end) = if start.1 < end.1 {
                     (start, end)
                 } else {
