@@ -205,4 +205,23 @@ impl Segment {
 
         pixels
     }
+
+    pub fn distance(&self, pixel: (u32, u32)) -> f32 {
+        let p = ((pixel.0 as f32) - (self.start.0 as f32), (pixel.1 as f32) - (self.start.1 as f32));
+        // distance start to end
+        let d = (self.direction.0 as f32, self.direction.1 as f32);
+        let dn = f32::sqrt(d.0*d.0 + d.1*d.1);
+        // project pixel onto direction vector
+        let dp = (p.0*d.0 + p.1*d.1)/dn;
+        if dp < 0.0 {
+            // distance pixel to start
+            f32::sqrt(p.0*p.0 + p.1*p.1)
+        } else if dp < dn {
+            // project onto orthogonal vector and take norm
+            f32::abs((-d.1*p.0 + d.0*p.1)/dn)
+        } else {
+            let dd = (d.0 - p.0, d.1 - p.1);
+            f32::sqrt(dd.0*dd.0 + dd.1*dd.1)
+        }
+    }
 }

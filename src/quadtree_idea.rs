@@ -183,7 +183,7 @@ fn extract_start_and_end(
 pub fn detect_edges(clusters: &Vec<Vec<(f32, f32)>>) -> Vec<Segment> {
     let mut result = Vec::with_capacity(clusters.len());
     for cluster in clusters.iter() {
-        if cluster.len() > 16 {
+        if cluster.len() > 2 {
             let mu = centroid(cluster);
             let cov = covariance(&cluster, mu);
             let b = -(cov.0 + cov.2);
@@ -192,11 +192,11 @@ pub fn detect_edges(clusters: &Vec<Vec<(f32, f32)>>) -> Vec<Segment> {
             let small_eig = 0.5 * (-b - discriminant);
             let big_eig = 0.5 * (-b + discriminant);
             //assert!(small_eig >= 0.0);
-            if big_eig > 4.0 && small_eig < 2.0 && big_eig > 4.0 * small_eig {
+            if small_eig < 2.0 && big_eig > 4.0 * small_eig {
                 let big_eigvec = solve_kernel(cov.0 - big_eig, cov.1);
                 let small_eigvec = solve_kernel(cov.0 - small_eig, cov.1);
                 let (mut start, mut end) = extract_start_and_end(cluster, small_eigvec, big_eigvec);
-                if f32::abs(start.0 - end.0) < 2.0 || f32::abs(start.1 - end.1) < 2.0 {
+                if f32::abs(start.0 - end.0) < 2.0 && f32::abs(start.1 - end.1) < 2.0 {
                     continue;
                 }
                 (start, end) = if start.1 < end.1 {

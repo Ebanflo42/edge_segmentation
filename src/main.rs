@@ -6,8 +6,10 @@ use edge_segmentation::{quadtree_idea::*, segment::*, segmentation::*};
 use image::{DynamicImage, GenericImageView, ImageBuffer, ImageReader, Pixel, Rgb, RgbImage};
 //use plotters::prelude::*;
 
-const OUT_FILE_NAME: &str = "edges.png";
+const OUT_FILE_NAME: &str = "edges3.png";
+const IN_FILE_NAME: &str = "revolution.jpg";
 const THRESHOLD: f32 = 0.15;
+const QUANTILE: f32 = 0.95;
 
 fn extract_sobel(img: &DynamicImage) -> Vec<bool> {
     let sobel_x = img
@@ -50,6 +52,8 @@ fn extract_sobel_cfar(img: &DynamicImage) -> Vec<(f32, f32)> {
                                                   + cy.0[1] * cy.0[1]
                                                   + cy.0[2] * cy.0[2];
     }
+
+    let threshold = quickselect(sob_array.clone(), (QUANTILE*(sob_array.len() as f32)) as usize);
 
     let mut result = vec![];
     let w = img.width() as usize;
@@ -104,8 +108,9 @@ fn extract_sobel_cfar(img: &DynamicImage) -> Vec<(f32, f32)> {
                 sob_array[i + 2 + w*(j + 3)],
                 sob_array[i + 3 + w*(j + 3)],
             ];
-            let thresh = quickselect(cfar_sample, 30);
-            if sob_array[i + w*j] > thresh && sob_array[i + w*j] > THRESHOLD {
+            //let thresh = quickselect(cfar_sample, 39);
+            let thresh = *cfar_sample.iter().max_by(|a, b| a.total_cmp(b)).unwrap();
+            if sob_array[i + w*j] > thresh && sob_array[i + w*j] > threshold {
                 result.push((i as f32, j as f32));
             }
         }
@@ -122,18 +127,25 @@ fn extract_sobel_pointcloud(img: &DynamicImage) -> Vec<(f32, f32)> {
         .filter3x3(&[-0.25, -0.5, -0.25, 0.0, 0.0, 0.0, 0.25, 0.5, 0.25])
         .into_rgb32f();
 
-    let mut result = vec![];
+    let mut sob_array = vec![0f32; (img.width() * img.height()) as usize];
     for ((x, y, &cx), &cy) in sobel_x.enumerate_pixels().zip(sobel_y.pixels()) {
-        let sob = cx.0[0] * cx.0[0]
-            + cx.0[1] * cx.0[1]
-            + cx.0[2] * cx.0[2]
-            + cy.0[0] * cy.0[0]
-            + cy.0[1] * cy.0[1]
-            + cy.0[2] * cy.0[2];
-        //println!("{} {}", x, y);
-        let dif = f32::sqrt(sob);
-        if dif > THRESHOLD {
-            result.push((x as f32, y as f32));
+        sob_array[(x + img.width() * y) as usize] = cx.0[0] * cx.0[0]
+                                                  + cx.0[1] * cx.0[1]
+                                                  + cx.0[2] * cx.0[2]
+                                                  + cy.0[0] * cy.0[0]
+                                                  + cy.0[1] * cy.0[1]
+                                                  + cy.0[2] * cy.0[2];
+    }
+
+    let threshold = quickselect(sob_array.clone(), (QUANTILE*(sob_array.len() as f32)) as usize);
+
+    let mut result = vec![];
+    let w = img.width() as usize;
+    for i in 3..(w - 3) {
+        for j in 3.. ((img.height() - 3) as usize) {
+            if sob_array[i + w*j] > threshold {
+                result.push((i as f32, j as f32));
+            }
         }
     }
 
@@ -167,6 +179,17 @@ fn draw_segments(
         blackboard.put_pixel(width + (pixel.0 as u32), pixel.1 as u32, Rgb([255, 255, 255]));
     }
 
+    for px in 0..width {
+        for py in 0..height {
+            for (n, seg) in segments.iter().enumerate() {
+                if seg.distance((px, py)) < 1.5 {
+                    blackboard.put_pixel(2*width + px, py, get_col(n));
+                }
+            }
+        }
+    }
+
+    /*
     for (i, segment) in segments.iter().enumerate() {
         let pixels = segment.list_all_pixels(width as usize);
         for px in pixels.iter() {
@@ -175,6 +198,7 @@ fn draw_segments(
             }
         }
     }
+    */
 
     blackboard
 }
@@ -221,12 +245,15 @@ fn draw_points(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let img = ImageReader::open("funhouse.jpg")?.decode()?;
-    let sobel = extract_sobel_cfar(&img);
+    let img = ImageReader::open(IN_FILE_NAME)?.decode()?;
+    let sobel = extract_sobel_pointcloud(&img);
     //println!("{}", edges.len());
     //println!("{:?}", edges);
     let now = Instant::now();
-    let quadtree_pts = quadtree_cluster(&sobel, 6);
+    let mindim = u32::min(img.height(), img.width());
+    assert!(mindim > 32);
+    let adaptive_depth = (f32::log2(mindim as f32) as u32) - 4;
+    let quadtree_pts = quadtree_cluster(&sobel, adaptive_depth);
     let edges = detect_edges(&quadtree_pts);
     let elapsed = now.elapsed();
     println!("{} edges detected in {} milliseconds", edges.len(), elapsed.as_millis());
