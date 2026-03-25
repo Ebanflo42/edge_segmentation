@@ -181,65 +181,155 @@ fn extract_start_and_end(
     (cluster[start_ix], cluster[end_ix])
 }
 
-fn unify_quadtree_segments(preliminary: Vec<Option<Segment>>) -> Vec<Segment> {
-    let mut result = Vec::new();
-    // fix this bs
-    let mut depth = 0;
-    while usize::pow(4, depth) != preliminary.len() {
-        depth += 1;
-    }
-    for i in 0..preliminary.len() {
-        match preliminary[i] {
-            None => continue,
-            Some(s) => {
-                let dirnorm =
-                    f32::sqrt(s.direction.0 * s.direction.0 + s.direction.1 * s.direction.1);
-                let dir = (s.direction.0 / dirnorm, s.direction.1 / dirnorm);
-                let this_quad = i % 4;
-                let opposite_quad = (this_quad + 2)%4;
-                let mut parent = i / 4;
-                let mut search_depth = 1;
-                while search_depth < depth && parent != opposite_quad {
-                    parent /= 4;
-                    search_depth += 1;
-                }
-                // the case where we have a cell all the way at the corner of the image
-                if search_depth == depth {
-                    parent = i / 4;
-                    search_depth = 1;
-                }
-                let n_iters = usize::pow(4, search_depth);
-                for j in n_iters * parent..n_iters * (parent + 1) {
-                    match preliminary[j] {
-                        None => continue,
-                        Some(s1) => {
-                            if u32::max(
-                                s.start.0 as u32 - s1.start.0 as u32,
-                                s1.start.1 as u32 - s1.start.1 as u32,
-                            ) < 3
-                            {
-                                let dirnorm1 = f32::sqrt(
-                                    s1.direction.0 * s1.direction.0
-                                        + s1.direction.1 * s1.direction.1,
-                                );
-                                let dir1 = (s1.direction.0 / dirnorm1, s1.direction.1 / dirnorm1);
-                                // about 5 degrees
-                                if dir.0*dir1.0 + dir.1*dir1.1 < 1e-3 {
+fn merge_segments(
+    mut quadtree_segments: Vec<Vec<Segment>>,
+    depth: usize,
+    min_length: f32,
+) -> Vec<Segment> {
+    fn merge_chunk(chunk: &[Vec<Segment>]) -> Vec<Segment> {
+        let n = chunk[0].len() + chunk[1].len() + chunk[2].len() + chunk[3].len();
+        // remember which segments we merge
+        let mut accounted = [
+            vec![false; chunk[0].len()],
+            vec![false; chunk[1].len()],
+            vec![false; chunk[2].len()],
+            vec![false; chunk[3].len()],
+        ];
+        let mut result = Vec::with_capacity(n);
 
-                                }
+        for (i, seg0) in chunk[0].iter().enumerate() {
+            for (j, seg1) in chunk[1].iter().enumerate() {
+                match seg0.maybe_extend(seg1) {
+                    None => continue,
+                    Some(s) => {
+                        result.push(s);
+                        accounted[0][i] = true;
+                        accounted[1][j] = true;
+                        break;
+                    }
+                }
+            }
+            if accounted[0][i] {
+                continue;
+            }
+            for (j, seg2) in chunk[2].iter().enumerate() {
+                match seg0.maybe_extend(seg2) {
+                    None => continue,
+                    Some(s) => {
+                        result.push(s);
+                        accounted[0][i] = true;
+                        accounted[2][j] = true;
+                        break;
+                    }
+                }
+            }
+            if accounted[0][i] {
+                continue;
+            }
+            for (j, seg3) in chunk[3].iter().enumerate() {
+                match seg0.maybe_extend(seg3) {
+                    None => continue,
+                    Some(s) => {
+                        result.push(s);
+                        accounted[0][i] = true;
+                        accounted[3][j] = true;
+                        break;
+                    }
+                }
+            }
+            if accounted[0][i] {
+                continue;
+            }
+            result.push(*seg0);
+        }
+
+        for (i, seg1) in chunk[1].iter().enumerate() {
+            if !accounted[1][i] {
+                for (j, seg2) in chunk[2].iter().enumerate() {
+                    if !accounted[2][j] {
+                        match seg1.maybe_extend(seg2) {
+                            None => continue,
+                            Some(s) => {
+                                result.push(s);
+                                accounted[1][i] = true;
+                                accounted[2][j] = true;
+                                break;
                             }
                         }
                     }
                 }
+                if accounted[1][i] {
+                    continue;
+                }
+                for (j, seg3) in chunk[3].iter().enumerate() {
+                    if !accounted[3][j] {
+                        match seg1.maybe_extend(seg3) {
+                            None => continue,
+                            Some(s) => {
+                                result.push(s);
+                                accounted[1][i] = true;
+                                accounted[3][j] = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if accounted[1][i] {
+                    continue;
+                }
+                result.push(*seg1);
             }
         }
+
+        for (i, seg2) in chunk[2].iter().enumerate() {
+            if !accounted[2][i] {
+                for (j, seg3) in chunk[3].iter().enumerate() {
+                    if !accounted[3][j] {
+                        match seg2.maybe_extend(seg3) {
+                            None => continue,
+                            Some(s) => {
+                                result.push(s);
+                                accounted[2][i] = true;
+                                accounted[3][j] = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if accounted[2][i] {
+                    continue;
+                }
+                result.push(*seg2);
+            }
+        }
+
+        for (i, seg3) in chunk[3].iter().enumerate() {
+            if !accounted[3][i] {
+                result.push(*seg3);
+            }
+        }
+
+        result
     }
-    result.into_iter().collect()
+
+    for _ in 0..depth {
+        quadtree_segments = quadtree_segments.chunks(4).map(merge_chunk).collect();
+    }
+
+    quadtree_segments
+        .into_iter()
+        .flatten()
+        .filter(|s| s.length() > min_length)
+        .collect()
 }
 
-pub fn detect_edges(clusters: &Vec<Vec<(f32, f32)>>) -> Vec<Segment> {
-    let mut result = Vec::with_capacity(clusters.len());
-    for cluster in clusters.iter() {
+pub fn detect_edges(
+    clusters: &Vec<Vec<(f32, f32)>>,
+    merge_depth: usize,
+    min_length: f32,
+) -> Vec<Segment> {
+    let mut result = vec![Vec::with_capacity(2); clusters.len()];
+    for (i, cluster) in clusters.iter().enumerate() {
         if cluster.len() > 2 {
             let mu = centroid(cluster);
             let cov = covariance(&cluster, mu);
@@ -254,21 +344,25 @@ pub fn detect_edges(clusters: &Vec<Vec<(f32, f32)>>) -> Vec<Segment> {
                 let small_eigvec = solve_kernel(cov.0 - small_eig, cov.1);
                 let (mut start, mut end) = extract_start_and_end(cluster, small_eigvec, big_eigvec);
                 if f32::abs(start.0 - end.0) < 2.0 && f32::abs(start.1 - end.1) < 2.0 {
-                    result.push(None);
+                    continue;
                 }
                 (start, end) = if start.1 < end.1 {
                     (start, end)
                 } else {
                     (end, start)
                 };
-                result.push(Some(Segment::new(
+                result[i].push(Segment::new(
                     (start.0 as usize, start.1 as usize),
                     (end.0 as usize, end.1 as usize),
-                )));
+                ));
             }
         } else {
-            result.push(None)
+            continue;
         }
     }
-    unify_quadtree_segments(result)
+    if merge_depth > 0 {
+        merge_segments(result, merge_depth, min_length)
+    } else {
+        result.concat()
+    }
 }
